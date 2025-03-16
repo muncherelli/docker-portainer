@@ -1,0 +1,53 @@
+networks:
+  agent-net:
+    driver: overlay
+    attachable: true
+  cloudflare-net:
+    external: true
+
+volumes:
+  data-disk:
+
+services:
+  agent:
+    image: portainer/agent:lts
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - agent-net
+    deploy:
+      mode: global
+      placement:
+        constraints: [node.platform.os == linux]
+
+  portainer:
+    image: portainer/portainer-ce:lts
+    command: -H tcp://tasks.agent:9001 --tlsskipverify
+    ports:
+      - target: 9443
+        published: 9443
+        protocol: tcp
+        mode: host
+    volumes:
+      - data-disk:/data
+    networks:
+      - agent-net
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: always
+    environment:
+      TZ: 'America/Chicago'
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    networks:
+      - cloudflare-net
+    deploy:
+      mode: global
